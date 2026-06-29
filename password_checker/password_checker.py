@@ -1,27 +1,69 @@
 #!/usr/bin/env python3
 """
-Password Strength Analyzer for Kali Linux
-Analyzes password security using entropy, pattern matching, and NIST guidelines.
+Password Strength Analyzer - Cross Platform
+Works on: Windows, macOS, Linux (Kali, Ubuntu, etc.)
 Author: Security Tool Suite
 """
 
 import re
 import math
 import sys
-import getpass
+import os
 from collections import Counter
 
-# Color codes for Kali terminal
+# Cross-platform color support
+try:
+    import colorama
+    colorama.init()
+    HAS_COLORAMA = True
+except ImportError:
+    HAS_COLORAMA = False
+
+# Detect if terminal supports colors
+def supports_color():
+    """Check if terminal supports ANSI colors."""
+    plat = sys.platform
+    supported_platform = plat != 'Pocket PC' and (plat != 'win32' or 'ANSICON' in os.environ)
+
+    # Check for Windows terminal
+    if plat == 'win32':
+        try:
+            import ctypes
+            kernel32 = ctypes.windll.kernel32
+            kernel32.SetConsoleMode(kernel32.GetStdHandle(-11), 7)
+            return True
+        except:
+            pass
+
+    # Check for terminal that supports colors
+    if hasattr(sys.stdout, "isatty") and sys.stdout.isatty():
+        return True
+
+    # Check environment variables
+    if os.environ.get('TERM') in ('xterm', 'xterm-color', 'xterm-256color', 'linux', 'screen', 'screen-256color', 'vt100'):
+        return True
+
+    if os.environ.get('COLORTERM'):
+        return True
+
+    return False
+
+USE_COLORS = supports_color()
+
 class Colors:
-    RED = "\033[91m"
-    GREEN = "\033[92m"
-    YELLOW = "\033[93m"
-    BLUE = "\033[94m"
-    MAGENTA = "\033[95m"
-    CYAN = "\033[96m"
-    BOLD = "\033[1m"
-    END = "\033[0m"
-    DIM = "\033[2m"
+    """Cross-platform color codes."""
+    if USE_COLORS:
+        RED = "\033[91m"
+        GREEN = "\033[92m"
+        YELLOW = "\033[93m"
+        BLUE = "\033[94m"
+        MAGENTA = "\033[95m"
+        CYAN = "\033[96m"
+        BOLD = "\033[1m"
+        END = "\033[0m"
+        DIM = "\033[2m"
+    else:
+        RED = GREEN = YELLOW = BLUE = MAGENTA = CYAN = BOLD = END = DIM = ""
 
 # Common weak patterns to detect
 COMMON_PATTERNS = [
@@ -33,7 +75,6 @@ COMMON_PATTERNS = [
     (r'(19|20)\d{2}', "Birth year pattern"),
 ]
 
-# Common password lists (top 1000 would be loaded from file in production)
 TOP_PASSWORDS = {
     '123456', 'password', '12345678', 'qwerty', '123456789', 'letmein', '1234567',
     'football', 'iloveyou', 'admin', 'welcome', 'monkey', 'login', 'abc123',
@@ -56,11 +97,11 @@ def calculate_entropy(password):
         probability = count / length
         entropy -= probability * math.log2(probability)
 
-    return entropy * length  # Total entropy in bits
+    return entropy * length
 
 
 def estimate_crack_time(password, gpu_speed=100_000_000_000):
-    """Estimate time to crack using brute force (assuming GPU at 100B hashes/sec)."""
+    """Estimate time to crack using brute force."""
     charset_size = 0
     if re.search(r'[a-z]', password): charset_size += 26
     if re.search(r'[A-Z]', password): charset_size += 26
@@ -97,11 +138,9 @@ def check_patterns(password):
         if re.search(pattern, password, re.IGNORECASE):
             issues.append(description)
 
-    # Check for common passwords
     if password.lower() in TOP_PASSWORDS:
         issues.append("Found in common password list")
 
-    # Check for leetspeak that's easily reversed
     leet_reversed = password.lower().replace('0', 'o').replace('1', 'i').replace('3', 'e').replace('4', 'a').replace('5', 's').replace('7', 't').replace('9', 'g').replace('@', 'a').replace('$', 's')
     if leet_reversed in TOP_PASSWORDS and leet_reversed != password.lower():
         issues.append("Leetspeak variant of common password")
@@ -122,26 +161,21 @@ def analyze_password(password):
         'crack_time': estimate_crack_time(password)
     }
 
-    # Calculate score (0-100)
     score = 0
 
-    # Length scoring
     if results['length'] >= 16: score += 25
     elif results['length'] >= 12: score += 20
     elif results['length'] >= 8: score += 10
     elif results['length'] >= 6: score += 5
 
-    # Character variety
     variety_count = sum([results['has_lower'], results['has_upper'], 
                           results['has_digit'], results['has_special']])
     score += variety_count * 15
 
-    # Entropy bonus
     if results['entropy'] > 80: score += 15
     elif results['entropy'] > 60: score += 10
     elif results['entropy'] > 40: score += 5
 
-    # Penalties
     if results['patterns']:
         score -= min(len(results['patterns']) * 10, 30)
     if results['length'] < 8:
@@ -149,7 +183,6 @@ def analyze_password(password):
 
     results['score'] = max(0, min(100, score))
 
-    # Determine strength label
     if results['score'] >= 80:
         results['strength'] = "STRONG"
         results['color'] = Colors.GREEN
@@ -171,21 +204,20 @@ def print_banner():
     banner = f"""
 {Colors.CYAN}{Colors.BOLD}╔══════════════════════════════════════════════════════════════╗
 ║           PASSWORD STRENGTH ANALYZER v2.0                    ║
-║         Kali Linux Security Assessment Tool                  ║
+║              Cross-Platform Security Tool                  ║
 ╚══════════════════════════════════════════════════════════════╝{Colors.END}
 """
     print(banner)
 
 
 def print_results(results, password):
-    """Display analysis results in formatted output."""
+    """Display analysis results."""
     masked = password[:2] + '*' * (len(password) - 4) + password[-2:] if len(password) > 4 else '*' * len(password)
 
     print(f"\n{Colors.BOLD}┌─ Analysis Results ─────────────────────────────────────┐{Colors.END}")
     print(f"{Colors.BOLD}│{Colors.END} Password:     {Colors.CYAN}{masked}{Colors.END}")
     print(f"{Colors.BOLD}│{Colors.END} Length:       {results['length']} characters")
 
-    # Strength meter
     bar_length = 20
     filled = int(results['score'] / 100 * bar_length)
     bar = '█' * filled + '░' * (bar_length - filled)
@@ -204,33 +236,32 @@ def print_results(results, password):
     ]
 
     for name, present in checks:
-        status = f"{Colors.GREEN}✓{Colors.END}" if present else f"{Colors.RED}✗{Colors.END}"
+        status = f"{Colors.GREEN}[OK]{Colors.END}" if present else f"{Colors.RED}[X]{Colors.END}"
         print(f"{Colors.BOLD}│{Colors.END} {status} {name:12} {'Present' if present else 'Missing'}")
 
     if results['patterns']:
         print(f"{Colors.BOLD}├─ Security Warnings ────────────────────────────────────┤{Colors.END}")
         for issue in results['patterns']:
-            print(f"{Colors.BOLD}│{Colors.END} {Colors.YELLOW}⚠{Colors.END}  {issue}")
+            print(f"{Colors.BOLD}│{Colors.END} {Colors.YELLOW}[!]{Colors.END}  {issue}")
     else:
         print(f"{Colors.BOLD}├─ Security Warnings ────────────────────────────────────┤{Colors.END}")
-        print(f"{Colors.BOLD}│{Colors.END} {Colors.GREEN}✓{Colors.END}  No common patterns detected")
+        print(f"{Colors.BOLD}│{Colors.END} {Colors.GREEN}[OK]{Colors.END} No common patterns detected")
 
     print(f"{Colors.BOLD}└────────────────────────────────────────────────────────┘{Colors.END}")
 
-    # Recommendations
     print(f"\n{Colors.BOLD}Recommendations:{Colors.END}")
     if results['length'] < 12:
-        print(f"  {Colors.YELLOW}→{Colors.END} Use at least 12 characters (16+ recommended)")
+        print(f"  {Colors.YELLOW}->{Colors.END} Use at least 12 characters (16+ recommended)")
     if not results['has_special']:
-        print(f"  {Colors.YELLOW}→{Colors.END} Add special characters (!@#$%^&*)")
+        print(f"  {Colors.YELLOW}->{Colors.END} Add special characters (!@#$%^&*)")
     if not results['has_upper']:
-        print(f"  {Colors.YELLOW}→{Colors.END} Include uppercase letters")
+        print(f"  {Colors.YELLOW}->{Colors.END} Include uppercase letters")
     if not results['has_digit']:
-        print(f"  {Colors.YELLOW}→{Colors.END} Add numeric digits")
+        print(f"  {Colors.YELLOW}->{Colors.END} Add numeric digits")
     if results['patterns']:
-        print(f"  {Colors.YELLOW}→{Colors.END} Avoid dictionary words, keyboard patterns, and personal info")
+        print(f"  {Colors.YELLOW}->{Colors.END} Avoid dictionary words, keyboard patterns, and personal info")
     if results['score'] >= 80:
-        print(f"  {Colors.GREEN}→{Colors.END} Excellent password! Consider using a password manager.")
+        print(f"  {Colors.GREEN}->{Colors.END} Excellent password! Consider using a password manager.")
 
     print()
 
@@ -244,12 +275,20 @@ def generate_password(length=16):
 
     while True:
         password = ''.join(secrets.choice(alphabet) for _ in range(length))
-        # Ensure all character types are present
         if (any(c.islower() for c in password) and
             any(c.isupper() for c in password) and
             any(c.isdigit() for c in password) and
             any(c in "!@#$%^&*()_+-=[]{}|;:,.<>?" for c in password)):
             return password
+
+
+def get_input(prompt):
+    """Cross-platform input that works with colors."""
+    try:
+        return input(prompt)
+    except (EOFError, KeyboardInterrupt):
+        print(f"\n{Colors.YELLOW}Exiting...{Colors.END}")
+        return None
 
 
 def interactive_mode():
@@ -258,11 +297,12 @@ def interactive_mode():
 
     while True:
         print(f"{Colors.DIM}Options: [analyze] password | [generate] length | [quit]{Colors.END}")
-        try:
-            choice = input(f"\n{Colors.CYAN}cmd>{Colors.END} ").strip().lower()
-        except (EOFError, KeyboardInterrupt):
-            print(f"\n{Colors.YELLOW}Exiting...{Colors.END}")
+        choice = get_input(f"\n{Colors.CYAN}cmd>{Colors.END} ")
+
+        if choice is None:
             break
+
+        choice = choice.strip().lower()
 
         if choice in ('quit', 'exit', 'q'):
             print(f"{Colors.GREEN}Goodbye!{Colors.END}")
@@ -283,7 +323,12 @@ def interactive_mode():
             if len(parts) > 1:
                 password = parts[1]
             else:
-                password = getpass.getpass(f"{Colors.CYAN}Enter password (hidden):{Colors.END} ")
+                # Cross-platform hidden input
+                try:
+                    import getpass
+                    password = getpass.getpass(f"{Colors.CYAN}Enter password (hidden):{Colors.END} ")
+                except:
+                    password = get_input(f"{Colors.CYAN}Enter password (visible):{Colors.END} ")
 
             if not password:
                 print(f"{Colors.RED}Error: Empty password{Colors.END}")
@@ -293,7 +338,6 @@ def interactive_mode():
             print_results(results, password)
 
         else:
-            # Default: treat as password to analyze
             if choice:
                 results = analyze_password(choice)
                 print_results(results, choice)
@@ -304,7 +348,7 @@ def main():
     if len(sys.argv) > 1:
         if sys.argv[1] in ('-h', '--help'):
             print(f"""
-{Colors.BOLD}Password Strength Analyzer{Colors.END}
+{Colors.BOLD}Password Strength Analyzer - Cross Platform{Colors.END}
 
 Usage:
   python3 password_checker.py              # Interactive mode
@@ -319,6 +363,8 @@ Features:
   • Common password list checking
   • NIST SP 800-63B compliance hints
   • Secure password generation
+
+Works on: Windows, macOS, Linux (Ubuntu, Kali, etc.)
 """)
             return
         elif sys.argv[1] in ('-g', '--generate'):
