@@ -9,3 +9,6 @@ Password security analyzer using entropy, NIST compliance, and GPU brute-force e
 - Common password breach checking
 - NIST SP 800-63B compliance hints
 - Secure password generation
+
+## Requirements
+pip install cryptography psutil requests scapy
